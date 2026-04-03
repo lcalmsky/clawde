@@ -1,0 +1,31 @@
+[project]
+name = "clawde"
+version = "0.1.0"
+description = "Audio to fingerstyle guitar tablature converter"
+requires-python = ">=3.10"
+dependencies = [
+    "basic-pitch>=0.3.0",
+    "pyguitarpro>=0.9",
+    "mcp[cli]>=1.2.0",
+    "ffmpeg-python>=0.2",
+    "click>=8.0",
+]
+
+[project.scripts]
+clawde = "clawde.cli:main"
+clawde-server = "clawde.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.backends"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clawde"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
