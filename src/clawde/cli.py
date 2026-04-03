@@ -26,13 +26,16 @@ def main():
 @click.option("--bpm", type=float, default=None,
               help="Override BPM (default: auto-detect).")
 @click.option("--no-separate", is_flag=True, default=False,
-              help="Disable source separation (use v0.2 legacy mode).")
-def convert_cmd(file_path, tuning, output_format, output_dir, bpm, no_separate):
+              help="Disable source separation (use legacy mode).")
+@click.option("--no-refine", is_flag=True, default=False,
+              help="Disable Claude API refinement.")
+def convert_cmd(file_path, tuning, output_format, output_dir, bpm, no_separate, no_refine):
     """Convert an audio file to guitar tablature."""
     mode = "legacy" if no_separate else "source separation"
+    refine_status = "off" if no_refine else "on"
     click.echo(f"Processing: {file_path}")
     bpm_info = f"BPM: {bpm}" if bpm else "BPM: auto-detect"
-    click.echo(f"Tuning: {tuning} | Format: {output_format} | {bpm_info} | Mode: {mode}")
+    click.echo(f"Tuning: {tuning} | Format: {output_format} | {bpm_info} | Mode: {mode} | Refine: {refine_status}")
     click.echo()
 
     result = convert(
@@ -42,6 +45,7 @@ def convert_cmd(file_path, tuning, output_format, output_dir, bpm, no_separate):
         output_dir=output_dir,
         bpm=bpm,
         separate_sources=not no_separate,
+        refine=not no_refine,
     )
 
     if result.ascii_tab:

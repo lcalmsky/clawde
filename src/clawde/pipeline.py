@@ -33,6 +33,7 @@ def convert(
     output_dir: str | Path = ".",
     bpm: float | None = None,
     separate_sources: bool = True,
+    refine: bool = True,
 ) -> TabResult:
     """Convert an audio file to guitar tablature.
 
@@ -43,6 +44,7 @@ def convert(
         output_dir: Directory for GuitarPro file output.
         bpm: Override BPM detection. If None, auto-detect.
         separate_sources: Use demucs source separation for better accuracy.
+        refine: Use Claude API to refine the arrangement.
     """
     file_path = Path(file_path)
     output_dir = Path(output_dir)
@@ -56,6 +58,11 @@ def convert(
         guitar_notes = _convert_separated(wav_path, tuning, output_dir)
     else:
         guitar_notes = _convert_legacy(wav_path, tuning)
+
+    # Claude API refinement
+    if refine and guitar_notes:
+        from clawde.refiner import refine as refine_notes
+        guitar_notes = refine_notes(guitar_notes, bpm=effective_bpm, tuning=tuning)
 
     if not guitar_notes:
         return TabResult(
