@@ -147,38 +147,119 @@ def _assign_simultaneous(
     return result
 
 
-def map_notes(notes: list[Note], tuning: str = "standard") -> list[GuitarNote]:
-    """Map MIDI notes to guitar positions.
+MAX_HAND_SPAN = 5  # max fret distance for simultaneous notes
 
-    Args:
-        notes: List of transcribed MIDI notes, sorted by start_time.
-        tuning: Guitar tuning name.
 
-    Returns:
-        List of GuitarNote with string/fret assignments.
+def _group_hand_position(positions: list[Position]) -> int:
+    """Get the central fret of a group of positions (hand position)."""
+    frets = [p.fret for p in positions if p.fret > 0]
+    return round(sum(frets) / len(frets)) if frets else 0
+
+
+def _stretch_penalty(positions: list[Position]) -> float:
+    """Penalize hand stretches beyond comfortable range."""
+    frets = [p.fret for p in positions if p.fret > 0]
+    if len(frets) < 2:
+        return 0.0
+    span = max(frets) - min(frets)
+    if span <= MAX_HAND_SPAN:
+        return 0.0
+    return (span - MAX_HAND_SPAN) * 3.0  # heavy penalty
+
+
+def _enumerate_group_assignments(
+    notes: list[Note],
+    tuning: tuple[int, ...],
+    preferred: tuple[int, ...] = (),
+    max_assignments: int = 20,
+) -> list[list[Position]]:
+    """Enumerate possible position assignments for a simultaneous group.
+
+    Returns up to max_assignments candidate assignments (each is a list of Positions).
     """
-    if tuning not in TUNINGS:
-        raise ValueError(f"Unknown tuning: {tuning}. Available: {list(TUNINGS.keys())}")
+    all_candidates = [get_candidates(n.pitch, tuning) for n in notes]
+    valid = [(i, c) for i, c in enumerate(all_candidates) if c]
+    if not valid:
+        return []
 
-    tuning_pitches = TUNINGS[tuning]
-    groups = _group_simultaneous(notes)
+    # For single note, return all candidates as single-element lists
+    if len(valid) == 1:
+        idx, candidates = valid[0]
+        return [[p] for p in candidates[:max_assignments]]
 
-    prev_fret: int | None = None
-    result: list[GuitarNote] = []
+    # For multiple notes, generate assignments avoiding string conflicts
+    # Use iterative approach with pruning
+    assignments: list[list[Position]] = [[]]
+    for idx, candidates in valid:
+        new_assignments = []
+        for partial in assignments:
+            used = {p.string for p in partial}
+            for c in candidates:
+                if c.string not in used:
+                    new_assignments.append(partial + [c])
+        # Prune to keep manageable
+        if len(new_assignments) > max_assignments * 3:
+            new_assignments.sort(key=lambda a: _stretch_penalty(a))
+            new_assignments = new_assignments[:max_assignments * 3]
+        assignments = new_assignments
 
-    for group in groups:
-        assigned = _assign_simultaneous(group, tuning_pitches, prev_fret)
-        result.extend(assigned)
+    if not assignments:
+        # Fallback: allow string conflicts
+        assignments = [[]]
+        for idx, candidates in valid:
+            new_assignments = []
+            for partial in assignments:
+                for c in candidates[:3]:
+                    new_assignments.append(partial + [c])
+            assignments = new_assignments[:max_assignments]
 
-        # Update prev_fret with the highest fret in this group (hand position)
-        frets = [g.fret for g in assigned if g.fret > 0]
-        if frets:
-            prev_fret = max(frets)
+    # Score and return top assignments
+    def score(a):
+        s = _stretch_penalty(a)
+        for p in a:
+            if preferred and p.string in preferred:
+                s -= 3.0
+            if p.fret == 0:
+                s -= 1.0
+        return s
 
-    return result
+    assignments.sort(key=score)
+    return assignments[:max_assignments]
 
 
-PREFERRED_STRING_BONUS = -5  # strong preference for target strings
+def _assignment_cost(
+    positions: list[Position],
+    prev_hand: int | None,
+    preferred: tuple[int, ...] = (),
+) -> float:
+    """Total cost of a group assignment given previous hand position."""
+    cost = _stretch_penalty(positions)
+
+    for p in positions:
+        if p.fret == 0:
+            cost += OPEN_STRING_BONUS
+        if preferred and p.string in preferred:
+            cost -= 3.0
+        cost += p.fret * 0.05
+
+    # Hand movement cost
+    hand = _group_hand_position(positions)
+    if prev_hand is not None and prev_hand > 0 and hand > 0:
+        cost += abs(hand - prev_hand) * 0.8
+
+    return cost
+
+
+def map_notes(notes: list[Note], tuning: str = "standard") -> list[GuitarNote]:
+    """Map MIDI notes to guitar positions using DP optimization.
+
+    Finds globally optimal fingering by considering hand position
+    transitions across all note groups.
+    """
+    return _map_notes_dp(notes, tuning, preferred_strings=())
+
+
+PREFERRED_STRING_BONUS = -5
 
 
 def map_notes_constrained(
@@ -186,71 +267,98 @@ def map_notes_constrained(
     tuning: str = "standard",
     preferred_strings: tuple[int, ...] = (),
 ) -> list[GuitarNote]:
-    """Map MIDI notes with preferred string constraints.
+    """Map MIDI notes with preferred string constraints using DP."""
+    return _map_notes_dp(notes, tuning, preferred_strings)
 
-    Like map_notes but strongly prefers placing notes on preferred_strings.
-    Falls back to other strings only when preferred ones can't reach the pitch.
-    """
+
+def _map_notes_dp(
+    notes: list[Note],
+    tuning: str,
+    preferred_strings: tuple[int, ...],
+) -> list[GuitarNote]:
+    """DP-based note mapping that minimizes total hand movement + stretch."""
     if tuning not in TUNINGS:
         raise ValueError(f"Unknown tuning: {tuning}. Available: {list(TUNINGS.keys())}")
+    if not notes:
+        return []
 
     tuning_pitches = TUNINGS[tuning]
     groups = _group_simultaneous(notes)
 
-    prev_fret: int | None = None
-    result: list[GuitarNote] = []
-
+    # Generate candidate assignments for each group
+    group_candidates: list[list[list[Position]]] = []
     for group in groups:
-        assigned = _assign_constrained(
-            group, tuning_pitches, prev_fret, preferred_strings,
+        assignments = _enumerate_group_assignments(
+            group, tuning_pitches, preferred_strings,
         )
-        result.extend(assigned)
+        if not assignments:
+            group_candidates.append([[]])
+        else:
+            group_candidates.append(assignments)
 
-        frets = [g.fret for g in assigned if g.fret > 0]
-        if frets:
-            prev_fret = max(frets)
+    n_groups = len(groups)
+    if n_groups == 0:
+        return []
 
-    return result
+    # DP: dp[i][j] = min cost to reach group i with assignment j
+    # For efficiency, limit candidates per group
+    MAX_CANDS = 10
+    for i in range(n_groups):
+        group_candidates[i] = group_candidates[i][:MAX_CANDS]
 
+    dp = [{} for _ in range(n_groups)]
+    parent = [{} for _ in range(n_groups)]
 
-def _constrained_cost(pos: Position, prev_fret: int | None,
-                      preferred: tuple[int, ...]) -> float:
-    """Position cost with preferred string bonus."""
-    cost = _position_cost(pos, prev_fret)
-    if preferred and pos.string in preferred:
-        cost += PREFERRED_STRING_BONUS
-    return cost
+    # Initialize first group
+    for j, assignment in enumerate(group_candidates[0]):
+        cost = _assignment_cost(assignment, None, preferred_strings)
+        dp[0][j] = cost
+        parent[0][j] = -1
 
+    # Fill DP table
+    for i in range(1, n_groups):
+        for j, assignment in enumerate(group_candidates[i]):
+            best_cost = float('inf')
+            best_prev = -1
 
-def _assign_constrained(
-    notes: list[Note],
-    tuning: tuple[int, ...],
-    prev_fret: int | None,
-    preferred: tuple[int, ...],
-) -> list[GuitarNote]:
-    """Assign positions with string preference constraints."""
-    used_strings: set[int] = set()
+            for k in dp[i - 1]:
+                prev_assignment = group_candidates[i - 1][k]
+                prev_hand = _group_hand_position(prev_assignment)
+                transition_cost = dp[i - 1][k] + _assignment_cost(
+                    assignment, prev_hand, preferred_strings,
+                )
+                if transition_cost < best_cost:
+                    best_cost = transition_cost
+                    best_prev = k
+
+            dp[i][j] = best_cost
+            parent[i][j] = best_prev
+
+    # Backtrack to find optimal path
+    if not dp[n_groups - 1]:
+        return []
+
+    best_last = min(dp[n_groups - 1], key=dp[n_groups - 1].get)
+    path = [0] * n_groups
+    path[n_groups - 1] = best_last
+    for i in range(n_groups - 2, -1, -1):
+        path[i] = parent[i + 1][path[i + 1]]
+
+    # Build result
     result: list[GuitarNote] = []
+    for i, group in enumerate(groups):
+        assignment = group_candidates[i][path[i]]
+        valid_notes = [n for n in group if get_candidates(n.pitch, tuning_pitches)]
 
-    for note in notes:
-        candidates = get_candidates(note.pitch, tuning)
-        if not candidates:
-            continue
-
-        available = [p for p in candidates if p.string not in used_strings]
-        if not available:
-            available = candidates
-
-        best = min(available, key=lambda p: _constrained_cost(p, prev_fret, preferred))
-        used_strings.add(best.string)
-        result.append(GuitarNote(
-            time=note.start_time,
-            duration=note.duration,
-            string=best.string,
-            fret=best.fret,
-            pitch=note.pitch,
-            velocity=note.velocity,
-        ))
+        for note, pos in zip(valid_notes, assignment):
+            result.append(GuitarNote(
+                time=note.start_time,
+                duration=note.duration,
+                string=pos.string,
+                fret=pos.fret,
+                pitch=note.pitch,
+                velocity=note.velocity,
+            ))
 
     return result
 
