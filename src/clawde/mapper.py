@@ -63,12 +63,8 @@ def _position_cost(pos: Position, prev_fret: int | None) -> float:
     if prev_fret is not None and prev_fret > 0:
         cost += abs(pos.fret - prev_fret)
 
-    # Strong preference for lower positions (frets 0-7)
-    if pos.fret <= 7:
-        cost += pos.fret * 0.1
-    else:
-        # Heavy penalty for high frets - almost always a worse choice
-        cost += 0.7 + (pos.fret - 7) * 0.5
+    # Slight preference for lower positions
+    cost += pos.fret * 0.1
 
     return cost
 
@@ -151,7 +147,7 @@ def _assign_simultaneous(
     return result
 
 
-MAX_HAND_SPAN = 5  # max fret distance for simultaneous notes
+MAX_HAND_SPAN = 4  # max fret distance for simultaneous notes (realistic finger span)
 
 
 def _group_hand_position(positions: list[Position]) -> int:
@@ -161,14 +157,15 @@ def _group_hand_position(positions: list[Position]) -> int:
 
 
 def _stretch_penalty(positions: list[Position]) -> float:
-    """Penalize hand stretches beyond comfortable range."""
+    """Penalize hand stretches beyond comfortable range (4 frets max)."""
     frets = [p.fret for p in positions if p.fret > 0]
     if len(frets) < 2:
         return 0.0
     span = max(frets) - min(frets)
     if span <= MAX_HAND_SPAN:
         return 0.0
-    return (span - MAX_HAND_SPAN) * 3.0  # heavy penalty
+    # Physically impossible stretches get extreme penalty
+    return (span - MAX_HAND_SPAN) * 50.0
 
 
 def _enumerate_group_assignments(
