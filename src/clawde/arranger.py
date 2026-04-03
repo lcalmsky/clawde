@@ -184,6 +184,7 @@ def _priority_merge(
         group.sort(key=lambda n: priorities.get(id(n), 99))
 
         used_strings: set[int] = set()
+        used_pitches: set[int] = set()
         kept: list[GuitarNote] = []
 
         for note in group:
@@ -191,7 +192,12 @@ def _priority_merge(
                 break
             if note.string in used_strings:
                 continue
+            # Skip duplicate pitches (same note on different strings)
+            if note.pitch > 0 and note.pitch in used_pitches:
+                continue
             used_strings.add(note.string)
+            if note.pitch > 0:
+                used_pitches.add(note.pitch)
             kept.append(note)
 
         result.extend(kept)

@@ -63,8 +63,12 @@ def _position_cost(pos: Position, prev_fret: int | None) -> float:
     if prev_fret is not None and prev_fret > 0:
         cost += abs(pos.fret - prev_fret)
 
-    # Slight preference for lower positions (more common in fingerstyle)
-    cost += pos.fret * 0.1
+    # Strong preference for lower positions (frets 0-7)
+    if pos.fret <= 7:
+        cost += pos.fret * 0.1
+    else:
+        # Heavy penalty for high frets - almost always a worse choice
+        cost += 0.7 + (pos.fret - 7) * 0.5
 
     return cost
 

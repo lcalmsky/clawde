@@ -4,9 +4,15 @@ from clawde.arranger import _priority_merge, _group_by_time, ArrangementConfig
 from clawde.mapper import GuitarNote
 
 
-def _note(time, string, fret=5, effect=None):
+_pitch_counter = [40]
+
+def _note(time, string, fret=5, effect=None, pitch=None):
+    if pitch is None:
+        # Each note gets a unique pitch to avoid duplicate-pitch filtering
+        _pitch_counter[0] += 1
+        pitch = _pitch_counter[0]
     return GuitarNote(time=time, duration=0.5, string=string, fret=fret,
-                      pitch=60, velocity=80, effect=effect)
+                      pitch=pitch, velocity=80, effect=effect)
 
 
 class TestGroupByTime:
