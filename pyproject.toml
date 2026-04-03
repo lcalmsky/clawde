@@ -2,13 +2,14 @@
 name = "clawde"
 version = "0.1.0"
 description = "Audio to fingerstyle guitar tablature converter"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 dependencies = [
-    "basic-pitch>=0.3.0",
+    "basic-pitch[onnx]>=0.3.0",
     "pyguitarpro>=0.9",
     "mcp[cli]>=1.2.0",
     "ffmpeg-python>=0.2",
     "click>=8.0",
+    "setuptools<70",
 ]
 
 [project.scripts]
@@ -17,7 +18,7 @@ clawde-server = "clawde.server:main"
 
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.backends"
+build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/clawde"]
