@@ -28,7 +28,8 @@ def main():
 def convert_cmd(file_path, tuning, output_format, output_dir, bpm):
     """Convert an audio file to guitar tablature."""
     click.echo(f"Processing: {file_path}")
-    click.echo(f"Tuning: {tuning} | Format: {output_format}")
+    bpm_info = f"BPM: {bpm}" if bpm else "BPM: auto-detect"
+    click.echo(f"Tuning: {tuning} | Format: {output_format} | {bpm_info}")
     click.echo()
 
     result = convert(
@@ -43,6 +44,7 @@ def convert_cmd(file_path, tuning, output_format, output_dir, bpm):
         click.echo(result.ascii_tab)
 
     click.echo()
+    click.echo(f"Detected BPM: {result.detected_bpm}")
     click.echo(f"Notes detected: {result.note_count}")
     click.echo(f"Duration: {result.duration_seconds:.1f}s")
 

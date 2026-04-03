@@ -53,7 +53,12 @@ def render(
     for note in notes:
         slot = int(note.time / slot_duration)
         if 0 <= slot < total_slots and 1 <= note.string <= 6:
-            fret_str = str(note.fret)
+            if note.effect == "dead":
+                fret_str = "x"
+            elif note.effect == "palm_mute":
+                fret_str = "M"
+            else:
+                fret_str = str(note.fret)
             grid[note.string][slot] = fret_str
             # Two-digit frets take an extra slot
             if len(fret_str) > 1 and slot + 1 < total_slots:

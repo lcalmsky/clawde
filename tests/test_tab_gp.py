@@ -54,3 +54,32 @@ class TestGenerate:
             # 6th string in drop D should be 38
             strings = song.tracks[0].strings
             assert strings[-1].value == 38  # lowest string
+
+    def test_dead_note_type(self):
+        """Dead note effect should set NoteType.dead."""
+        notes = [GuitarNote(time=0.0, duration=0.05, string=6, fret=0, pitch=0, velocity=80, effect="dead")]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = generate(notes, Path(tmpdir) / "dead.gp5")
+            song = guitarpro.parse(str(path))
+            track = song.tracks[0]
+            # Find the first non-rest beat
+            for measure in track.measures:
+                for beat in measure.voices[0].beats:
+                    if beat.notes:
+                        assert beat.notes[0].type == guitarpro.models.NoteType.dead
+                        return
+            assert False, "No notes found"
+
+    def test_palm_mute_effect(self):
+        """Palm mute effect should set palmMute on note effect."""
+        notes = [GuitarNote(time=0.0, duration=0.05, string=4, fret=0, pitch=0, velocity=80, effect="palm_mute")]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = generate(notes, Path(tmpdir) / "mute.gp5")
+            song = guitarpro.parse(str(path))
+            track = song.tracks[0]
+            for measure in track.measures:
+                for beat in measure.voices[0].beats:
+                    if beat.notes:
+                        assert beat.notes[0].effect.palmMute is True
+                        return
+            assert False, "No notes found"

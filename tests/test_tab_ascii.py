@@ -51,3 +51,19 @@ class TestRender:
         # Both 0 and 3 should appear
         assert "0" in e_line[0]
         assert "3" in e_line[0]
+
+    def test_dead_note_renders_x(self):
+        """Dead note should render as 'x'."""
+        notes = [GuitarNote(time=0.0, duration=0.05, string=6, fret=0, pitch=0, velocity=80, effect="dead")]
+        result = render(notes, bpm=120.0)
+        e_line = [l for l in result.split("\n") if l.startswith("E|")]
+        assert len(e_line) > 0
+        assert "x" in e_line[0]
+
+    def test_palm_mute_renders_m(self):
+        """Palm mute should render as 'M'."""
+        notes = [GuitarNote(time=0.0, duration=0.05, string=4, fret=0, pitch=0, velocity=80, effect="palm_mute")]
+        result = render(notes, bpm=120.0)
+        d_line = [l for l in result.split("\n") if l.startswith("D|")]
+        assert len(d_line) > 0
+        assert "M" in d_line[0]

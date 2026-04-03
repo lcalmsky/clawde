@@ -3,11 +3,13 @@
 from clawde.mapper import (
     get_candidates,
     map_notes,
+    map_percussive,
     GuitarNote,
     Position,
     TUNINGS,
 )
 from clawde.transcriber import Note
+from clawde.percussive import PercussiveEvent
 
 
 class TestGetCandidates:
@@ -98,3 +100,32 @@ class TestMapNotes:
         import pytest
         with pytest.raises(ValueError, match="Unknown tuning"):
             map_notes([], "random_tuning")
+
+
+class TestMapPercussive:
+    def test_body_tap(self):
+        events = [PercussiveEvent(time=1.0, category="body_tap", strength=0.9)]
+        result = map_percussive(events)
+        assert len(result) == 1
+        assert result[0].string == 6
+        assert result[0].effect == "dead"
+
+    def test_mute(self):
+        events = [PercussiveEvent(time=1.0, category="mute", strength=0.7)]
+        result = map_percussive(events)
+        assert result[0].string == 4
+        assert result[0].effect == "palm_mute"
+
+    def test_string_tap(self):
+        events = [PercussiveEvent(time=1.0, category="string_tap", strength=0.5)]
+        result = map_percussive(events)
+        assert result[0].string == 1
+        assert result[0].effect == "dead"
+
+    def test_empty_events(self):
+        assert map_percussive([]) == []
+
+    def test_velocity_from_strength(self):
+        events = [PercussiveEvent(time=0.0, category="body_tap", strength=1.0)]
+        result = map_percussive(events)
+        assert result[0].velocity == 127

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from clawde.transcriber import Note
+from clawde.percussive import PercussiveEvent
 
 
 # Guitar tunings: (string_6, string_5, string_4, string_3, string_2, string_1)
@@ -36,6 +37,7 @@ class GuitarNote:
     fret: int
     pitch: int
     velocity: int
+    effect: str | None = None  # None, "dead", "palm_mute"
 
 
 def get_candidates(pitch: int, tuning: tuple[int, ...]) -> list[Position]:
@@ -173,4 +175,39 @@ def map_notes(notes: list[Note], tuning: str = "standard") -> list[GuitarNote]:
         if frets:
             prev_fret = max(frets)
 
+    return result
+
+
+# Percussive event → guitar string mapping
+_PERCUSSIVE_STRING_MAP = {
+    "body_tap": 6,     # low E string area
+    "mute": 4,         # mid strings
+    "string_tap": 1,   # high e string
+}
+
+_PERCUSSIVE_EFFECT_MAP = {
+    "body_tap": "dead",
+    "mute": "palm_mute",
+    "string_tap": "dead",
+}
+
+PERCUSSIVE_DURATION = 0.05  # short percussive hit
+
+
+def map_percussive(events: list[PercussiveEvent]) -> list[GuitarNote]:
+    """Map percussive events to guitar notes with effects."""
+    result = []
+    for event in events:
+        string = _PERCUSSIVE_STRING_MAP.get(event.category, 4)
+        effect = _PERCUSSIVE_EFFECT_MAP.get(event.category, "dead")
+
+        result.append(GuitarNote(
+            time=event.time,
+            duration=PERCUSSIVE_DURATION,
+            string=string,
+            fret=0,
+            pitch=0,
+            velocity=int(event.strength * 127),
+            effect=effect,
+        ))
     return result

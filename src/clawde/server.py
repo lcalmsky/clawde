@@ -27,7 +27,7 @@ def audio_to_tab(
         tuning: Guitar tuning - "standard", "drop_d", "open_g", or "dadgad".
         output_format: Output format - "ascii" (text only), "gp" (GuitarPro only), or "both".
         output_dir: Directory to save GuitarPro files.
-        bpm: Override tempo detection. Leave empty for default (~120 BPM).
+        bpm: Override tempo detection. Leave empty for auto-detect.
     """
     result = convert(
         file_path=file_path,
@@ -42,7 +42,8 @@ def audio_to_tab(
     if result.ascii_tab:
         parts.append(result.ascii_tab)
 
-    parts.append(f"\nNotes detected: {result.note_count}")
+    parts.append(f"\nDetected BPM: {result.detected_bpm}")
+    parts.append(f"Notes detected: {result.note_count}")
     parts.append(f"Duration: {result.duration_seconds:.1f}s")
 
     if result.gp_path:
