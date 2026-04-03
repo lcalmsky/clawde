@@ -16,44 +16,12 @@ GP_TUNING_MAP = {
 }
 
 BEATS_PER_MEASURE = 4
-SLOTS_PER_BEAT = 4      # 16th note resolution
-SLOTS_PER_MEASURE = BEATS_PER_MEASURE * SLOTS_PER_BEAT  # 16 slots per measure
-
-# Valid slot counts and their GP duration values
-# Each entry: (slot_count, gp_duration_value, is_dotted)
-VALID_DURATIONS = [
-    (16, 1, False),   # whole
-    (12, 2, True),    # dotted half
-    (8,  2, False),   # half
-    (6,  4, True),    # dotted quarter
-    (4,  4, False),   # quarter
-    (3,  8, True),    # dotted eighth
-    (2,  8, False),   # eighth
-    (1,  16, False),  # sixteenth
-]
-
-
-def _decompose_slots(n_slots: int) -> list[tuple[int, int, bool]]:
-    """Decompose a slot count into valid GP durations.
-
-    Returns list of (slot_count, gp_duration_value, is_dotted).
-    E.g., 5 slots → [(4, 4, False), (1, 16, False)] (quarter + 16th)
-    """
-    result = []
-    remaining = n_slots
-    for slot_count, dur_value, is_dotted in VALID_DURATIONS:
-        while remaining >= slot_count:
-            result.append((slot_count, dur_value, is_dotted))
-            remaining -= slot_count
-    return result
+SLOTS_PER_BEAT = 4
+SLOTS_PER_MEASURE = BEATS_PER_MEASURE * SLOTS_PER_BEAT
 
 
 def _quantize_slot(time_sec: float, slot_duration_sec: float) -> int:
     return round(time_sec / slot_duration_sec)
-
-
-def _note_duration_slots(note_duration_sec: float, slot_duration_sec: float) -> int:
-    return max(1, round(note_duration_sec / slot_duration_sec))
 
 
 def generate(
@@ -73,7 +41,7 @@ def generate(
 
     track = song.tracks[0]
     track.name = "Fingerstyle Guitar"
-    track.channel.instrument = 25  # Acoustic Guitar (steel)
+    track.channel.instrument = 25
     track.isPercussionTrack = False
 
     tuning_values = GP_TUNING_MAP.get(tuning, GP_TUNING_MAP["standard"])
@@ -92,17 +60,14 @@ def generate(
     max_time = max(n.time + n.duration for n in notes)
     num_measures = int(max_time / measure_duration_sec) + 1
 
-    # Build slot grid: slot_index -> list of GuitarNote
-    total_slots = num_measures * SLOTS_PER_MEASURE
-    grid: dict[int, list[GuitarNote]] = {}
-    note_durations: dict[int, int] = {}
+    # Quantize notes to eighth-note grid (8 beats per measure)
+    eighth_duration_sec = beat_duration_sec / 2
+    EIGHTHS_PER_MEASURE = BEATS_PER_MEASURE * 2  # 8
 
+    beat_grid: dict[int, list[GuitarNote]] = {}
     for note in notes:
-        slot = _quantize_slot(note.time, slot_duration_sec)
-        slot = min(slot, total_slots - 1)
-        grid.setdefault(slot, []).append(note)
-        dur_slots = _note_duration_slots(note.duration, slot_duration_sec)
-        note_durations[slot] = max(note_durations.get(slot, 0), dur_slots)
+        beat_idx = round(note.time / eighth_duration_sec)
+        beat_grid.setdefault(beat_idx, []).append(note)
 
     # Ensure enough measures
     while len(song.measureHeaders) < num_measures:
@@ -115,77 +80,49 @@ def generate(
         measure = guitarpro.models.Measure(track, measure_header)
         track.measures.append(measure)
 
-    # Fill each measure with beats
+    # Fill each measure with exactly 8 eighth-note beats
+    EIGHTHS_PER_MEASURE = BEATS_PER_MEASURE * 2
+
     for m_idx in range(num_measures):
         measure = track.measures[m_idx]
         voice = measure.voices[0]
         voice.beats = []
 
-        slot_offset = m_idx * SLOTS_PER_MEASURE
-        pos = 0
+        for beat_in_measure in range(EIGHTHS_PER_MEASURE):
+            abs_beat = m_idx * EIGHTHS_PER_MEASURE + beat_in_measure
 
-        while pos < SLOTS_PER_MEASURE:
-            abs_slot = slot_offset + pos
+            gp_duration = guitarpro.models.Duration()
+            gp_duration.value = 8  # eighth note
 
-            if abs_slot in grid:
-                # Note beat - use only the first valid duration chunk,
-                # tie the rest as sustained
-                dur_slots = note_durations[abs_slot]
-                dur_slots = min(dur_slots, SLOTS_PER_MEASURE - pos)
-                chunks = _decompose_slots(dur_slots)
-                if not chunks:
-                    chunks = [(1, 16, False)]
+            if abs_beat in beat_grid:
+                beat = guitarpro.models.Beat(voice, duration=gp_duration)
 
-                gnotes_for_slot = grid[abs_slot]
+                # Deduplicate by string (keep first per string)
+                seen_strings: set[int] = set()
+                for gnote in beat_grid[abs_beat]:
+                    if gnote.string in seen_strings:
+                        continue
+                    seen_strings.add(gnote.string)
 
-                for i, (chunk_slots, dur_value, is_dotted) in enumerate(chunks):
-                    gp_duration = guitarpro.models.Duration()
-                    gp_duration.value = dur_value
-                    gp_duration.isDotted = is_dotted
+                    gp_note = guitarpro.models.Note(beat)
+                    gp_note.string = gnote.string
+                    gp_note.value = gnote.fret
+                    gp_note.velocity = guitarpro.models.Velocities.forte
 
-                    beat = guitarpro.models.Beat(voice, duration=gp_duration)
+                    if gnote.effect == "dead":
+                        gp_note.type = guitarpro.models.NoteType.dead
+                    elif gnote.effect == "palm_mute":
+                        gp_note.effect.palmMute = True
 
-                    if i == 0:
-                        # First chunk: place the actual notes
-                        for gnote in gnotes_for_slot:
-                            gp_note = guitarpro.models.Note(beat)
-                            gp_note.string = gnote.string
-                            gp_note.value = gnote.fret
-                            gp_note.velocity = guitarpro.models.Velocities.forte
+                    beat.notes.append(gp_note)
 
-                            if gnote.effect == "dead":
-                                gp_note.type = guitarpro.models.NoteType.dead
-                            elif gnote.effect == "palm_mute":
-                                gp_note.effect.palmMute = True
-
-                            beat.notes.append(gp_note)
-                    else:
-                        # Continuation chunks: rest (simpler than tied notes)
-                        beat.status = guitarpro.models.BeatStatus.rest
-
-                    voice.beats.append(beat)
-                    pos += chunk_slots
+                voice.beats.append(beat)
             else:
-                # Rest: find how many slots until next note or measure end
-                rest_slots = 1
-                while (pos + rest_slots < SLOTS_PER_MEASURE
-                       and (slot_offset + pos + rest_slots) not in grid):
-                    rest_slots += 1
-
-                # Decompose rest into valid durations
-                chunks = _decompose_slots(rest_slots)
-                if not chunks:
-                    chunks = [(1, 16, False)]
-
-                for chunk_slots, dur_value, is_dotted in chunks:
-                    gp_duration = guitarpro.models.Duration()
-                    gp_duration.value = dur_value
-                    gp_duration.isDotted = is_dotted
-
-                    beat = guitarpro.models.Beat(voice, duration=gp_duration,
-                                                 status=guitarpro.models.BeatStatus.rest)
-                    voice.beats.append(beat)
-                    pos += chunk_slots
+                beat = guitarpro.models.Beat(
+                    voice, duration=gp_duration,
+                    status=guitarpro.models.BeatStatus.rest,
+                )
+                voice.beats.append(beat)
 
     guitarpro.write(song, str(output_path))
     return output_path

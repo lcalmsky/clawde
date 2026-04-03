@@ -16,11 +16,12 @@ def audio_to_tab(
     output_format: str = "both",
     output_dir: str = ".",
     bpm: float | None = None,
+    separate_sources: bool = True,
 ) -> str:
     """Convert an audio file to fingerstyle guitar tablature.
 
-    Analyzes mp3/mp4/wav files and generates guitar tab notation.
-    Outputs ASCII tab for quick viewing and/or GuitarPro (.gp5) files for editing.
+    Uses source separation (demucs) to split vocals/bass/drums/other,
+    then arranges each part onto appropriate guitar strings for fingerstyle.
 
     Args:
         file_path: Path to the audio file (mp3, mp4, wav, flac, ogg).
@@ -28,6 +29,7 @@ def audio_to_tab(
         output_format: Output format - "ascii" (text only), "gp" (GuitarPro only), or "both".
         output_dir: Directory to save GuitarPro files.
         bpm: Override tempo detection. Leave empty for auto-detect.
+        separate_sources: Use demucs source separation. Set false for legacy mode.
     """
     result = convert(
         file_path=file_path,
@@ -35,6 +37,7 @@ def audio_to_tab(
         output_format=output_format,
         output_dir=output_dir,
         bpm=bpm,
+        separate_sources=separate_sources,
     )
 
     parts = []

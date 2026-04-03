@@ -1,6 +1,6 @@
 [project]
 name = "clawde"
-version = "0.2.0"
+version = "0.3.0"
 description = "Audio to fingerstyle guitar tablature converter"
 requires-python = ">=3.10,<3.13"
 dependencies = [
@@ -16,6 +16,9 @@ dependencies = [
 [project.scripts]
 clawde = "clawde.cli:main"
 clawde-server = "clawde.server:main"
+
+[project.optional-dependencies]
+full = ["demucs>=4.0"]
 
 [build-system]
 requires = ["hatchling"]

@@ -24,12 +24,15 @@ def main():
 @click.option("--output", "-o", "output_dir", default=".",
               type=click.Path(), help="Output directory for GP files.")
 @click.option("--bpm", type=float, default=None,
-              help="Override BPM (default: auto-detect ~120).")
-def convert_cmd(file_path, tuning, output_format, output_dir, bpm):
+              help="Override BPM (default: auto-detect).")
+@click.option("--no-separate", is_flag=True, default=False,
+              help="Disable source separation (use v0.2 legacy mode).")
+def convert_cmd(file_path, tuning, output_format, output_dir, bpm, no_separate):
     """Convert an audio file to guitar tablature."""
+    mode = "legacy" if no_separate else "source separation"
     click.echo(f"Processing: {file_path}")
     bpm_info = f"BPM: {bpm}" if bpm else "BPM: auto-detect"
-    click.echo(f"Tuning: {tuning} | Format: {output_format} | {bpm_info}")
+    click.echo(f"Tuning: {tuning} | Format: {output_format} | {bpm_info} | Mode: {mode}")
     click.echo()
 
     result = convert(
@@ -38,6 +41,7 @@ def convert_cmd(file_path, tuning, output_format, output_dir, bpm):
         output_format=output_format,
         output_dir=output_dir,
         bpm=bpm,
+        separate_sources=not no_separate,
     )
 
     if result.ascii_tab:

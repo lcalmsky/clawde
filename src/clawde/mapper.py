@@ -178,6 +178,83 @@ def map_notes(notes: list[Note], tuning: str = "standard") -> list[GuitarNote]:
     return result
 
 
+PREFERRED_STRING_BONUS = -5  # strong preference for target strings
+
+
+def map_notes_constrained(
+    notes: list[Note],
+    tuning: str = "standard",
+    preferred_strings: tuple[int, ...] = (),
+) -> list[GuitarNote]:
+    """Map MIDI notes with preferred string constraints.
+
+    Like map_notes but strongly prefers placing notes on preferred_strings.
+    Falls back to other strings only when preferred ones can't reach the pitch.
+    """
+    if tuning not in TUNINGS:
+        raise ValueError(f"Unknown tuning: {tuning}. Available: {list(TUNINGS.keys())}")
+
+    tuning_pitches = TUNINGS[tuning]
+    groups = _group_simultaneous(notes)
+
+    prev_fret: int | None = None
+    result: list[GuitarNote] = []
+
+    for group in groups:
+        assigned = _assign_constrained(
+            group, tuning_pitches, prev_fret, preferred_strings,
+        )
+        result.extend(assigned)
+
+        frets = [g.fret for g in assigned if g.fret > 0]
+        if frets:
+            prev_fret = max(frets)
+
+    return result
+
+
+def _constrained_cost(pos: Position, prev_fret: int | None,
+                      preferred: tuple[int, ...]) -> float:
+    """Position cost with preferred string bonus."""
+    cost = _position_cost(pos, prev_fret)
+    if preferred and pos.string in preferred:
+        cost += PREFERRED_STRING_BONUS
+    return cost
+
+
+def _assign_constrained(
+    notes: list[Note],
+    tuning: tuple[int, ...],
+    prev_fret: int | None,
+    preferred: tuple[int, ...],
+) -> list[GuitarNote]:
+    """Assign positions with string preference constraints."""
+    used_strings: set[int] = set()
+    result: list[GuitarNote] = []
+
+    for note in notes:
+        candidates = get_candidates(note.pitch, tuning)
+        if not candidates:
+            continue
+
+        available = [p for p in candidates if p.string not in used_strings]
+        if not available:
+            available = candidates
+
+        best = min(available, key=lambda p: _constrained_cost(p, prev_fret, preferred))
+        used_strings.add(best.string)
+        result.append(GuitarNote(
+            time=note.start_time,
+            duration=note.duration,
+            string=best.string,
+            fret=best.fret,
+            pitch=note.pitch,
+            velocity=note.velocity,
+        ))
+
+    return result
+
+
 # Percussive event → guitar string mapping
 _PERCUSSIVE_STRING_MAP = {
     "body_tap": 6,     # low E string area

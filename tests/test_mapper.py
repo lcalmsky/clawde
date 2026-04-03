@@ -3,6 +3,7 @@
 from clawde.mapper import (
     get_candidates,
     map_notes,
+    map_notes_constrained,
     map_percussive,
     GuitarNote,
     Position,
@@ -129,3 +130,35 @@ class TestMapPercussive:
         events = [PercussiveEvent(time=0.0, category="body_tap", strength=1.0)]
         result = map_percussive(events)
         assert result[0].velocity == 127
+
+
+class TestMapNotesConstrained:
+    def test_prefers_high_strings(self):
+        """Notes should prefer strings 1-2 when constrained."""
+        # A4 (69) can be on string 1 fret 5 or string 2 fret 10
+        notes = [Note(start_time=0.0, end_time=0.5, pitch=69, velocity=80)]
+        result = map_notes_constrained(notes, "standard", preferred_strings=(1, 2))
+        assert len(result) == 1
+        assert result[0].string in (1, 2)
+
+    def test_prefers_low_strings(self):
+        """Notes should prefer strings 5-6 when constrained."""
+        # E2 (40) is only playable on string 6 fret 0
+        notes = [Note(start_time=0.0, end_time=0.5, pitch=40, velocity=80)]
+        result = map_notes_constrained(notes, "standard", preferred_strings=(5, 6))
+        assert len(result) == 1
+        assert result[0].string in (5, 6)
+
+    def test_falls_back_when_preferred_impossible(self):
+        """Should use non-preferred string when pitch doesn't fit preferred."""
+        # E2 (40) only fits on string 6, even if preferred is (1, 2)
+        notes = [Note(start_time=0.0, end_time=0.5, pitch=40, velocity=80)]
+        result = map_notes_constrained(notes, "standard", preferred_strings=(1, 2))
+        assert len(result) == 1
+        assert result[0].string == 6  # only option
+
+    def test_empty_preferred_works_like_map_notes(self):
+        """No preferred strings should behave like regular map_notes."""
+        notes = [Note(start_time=0.0, end_time=0.5, pitch=64, velocity=80)]
+        result = map_notes_constrained(notes, "standard", preferred_strings=())
+        assert len(result) == 1
